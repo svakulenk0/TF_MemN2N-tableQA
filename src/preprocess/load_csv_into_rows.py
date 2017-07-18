@@ -7,7 +7,7 @@ author: svakulenko
 import csv
 
 
-DATA_DIR = '../data/'
+DATA_DIR = '../../data/'
 SAMPLE_CSV_FILE = 'OOE_Wanderungen_Zeitreihe.csv'
 
 

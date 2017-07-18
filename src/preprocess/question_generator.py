@@ -3,8 +3,10 @@
 author: svakulenko
 18 Jul 2017
 '''
+from random import randrange
 
 from load_csv_into_rows import load_csv, SAMPLE_CSV_FILE
+
 
 DATA_DIR = './data/'
 SAMPLE_CSV_FILE = 'OOE_Wanderungen_Zeitreihe.csv'
@@ -25,12 +27,14 @@ answer_columns = ['internal_mig_immigration',
 
 def generate_questions(file_name):
     header, rows = load_csv(SAMPLE_CSV_FILE)
-    qa_s = []
+    # row_strs = []
+    data = []
     for i, row in enumerate(rows):
         row_str = ""
         keys = []
         # container to store tuples of question-answer pairs
         qa_keys = []
+        qa_s = []
         # go over the row
         for j, cell in enumerate(row):
             if header[j].lower() in key_columns:
@@ -38,17 +42,32 @@ def generate_questions(file_name):
             elif header[j].lower() in answer_columns:
                 qa_keys.append((header[j], cell))
             # row as a string:
-            # row_str = "%s %s %s" % (row_str, header[j], cell)
-        # row_strs.append(row_str.lower().strip())
+            row_str = "%s %s %s" % (row_str, header[j], cell)
+            row_str = row_str.lower().strip()
         for qa in qa_keys:
             question = question_template % (qa[0], keys[0], keys[1])
             answer = qa[1]
             qa_s.append((question.lower(), answer.lower()))
-    return qa_s
+        data.append((row_str, qa_s))
+    return data
 
 
 def test_generate_questions():
-    print generate_questions(SAMPLE_CSV_FILE)[:2]
+    # generate
+    data = generate_questions(SAMPLE_CSV_FILE)
+
+    # print table stats
+    nrows = len(data)
+    nqas = len(data[0][1])
+    print 'Table with %i rows' % nrows
+    print 'Questions for each row: %i \n' % nqas
+
+    # show sample
+    sample_row = randrange(0, nrows)
+    print 'Row #%i:' % sample_row
+    print data[sample_row][0]
+    sample_qa = randrange(0, nqas)
+    print 'Sample QA:', data[sample_row][1][sample_qa]
 
 
 if __name__ == '__main__':
