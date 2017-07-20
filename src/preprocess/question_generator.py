@@ -4,12 +4,9 @@ author: svakulenko
 18 Jul 2017
 '''
 from random import randrange
+import cPickle as pkl
 
-from load_csv_into_rows import load_csv, SAMPLE_CSV_FILE
-
-
-DATA_DIR = './data/'
-SAMPLE_CSV_FILE = 'OOE_Wanderungen_Zeitreihe.csv'
+from load_csv_into_rows import load_csv, SAMPLE_CSV_FILE, DATA_DIR
 
 # generating a sample question to a table
 # with a complex key on 2 columns
@@ -52,9 +49,12 @@ def generate_questions(file_name):
     return data
 
 
-def test_generate_questions():
+def test_generate_questions(file_name=SAMPLE_CSV_FILE):
     # generate
-    data = generate_questions(SAMPLE_CSV_FILE)
+    data = generate_questions(file_name)
+    loc = DATA_DIR + file_name[:-4] + '_data.pkl'
+    with open(loc, 'w') as f:
+        pkl.dump(data, f)
 
     # print table stats
     nrows = len(data)
