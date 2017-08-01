@@ -7,7 +7,7 @@ from __future__ import absolute_import
 from recurrentshop import LSTMCell, RecurrentSequential
 from seq2seq.cells import LSTMDecoderCell, AttentionDecoderCell
 from keras.models import Sequential, Model
-from keras.layers import Dense, Dropout, TimeDistributed, Bidirectional, Input, dot
+from keras.layers import Dense, Dropout, TimeDistributed, Bidirectional, Input, dot, Embedding
 
 
 def Seq2SeqtableQA(row_maxlen, question_maxlen, answer_maxlen, len_dic, hidden_dim, batch_size,
@@ -23,18 +23,18 @@ def Seq2SeqtableQA(row_maxlen, question_maxlen, answer_maxlen, len_dic, hidden_d
     '''
 
     # input placeholders
-    table = Input((batch_size, row_maxlen))
-    question = Input((batch_size, question_maxlen))
+    table = Input((row_maxlen, len_dic))
+    question = Input((question_maxlen, len_dic))
 
     # table encoder
     table_encoder = RecurrentSequential(unroll=unroll, stateful=stateful)
     # table_encoder.add(Embedding(input_dim=len_dic,
-    #                             output_dim=EMBEDDINGS_SIZE,
+    #                             output_dim=hidden_dim,
     #                             input_length=row_maxlen,
     #                             # weights = [embedding_matrix],
     #                             mask_zero=True,
     #                             trainable=False))
-    table_encoder.add(LSTMCell(hidden_dim, batch_input_shape=(batch_size, row_maxlen)))
+    table_encoder.add(LSTMCell(hidden_dim, batch_input_shape=(row_maxlen, len_dic)))
 
     for _ in range(1, depth[0]):
         table_encoder.add(Dropout(dropout))
@@ -45,7 +45,7 @@ def Seq2SeqtableQA(row_maxlen, question_maxlen, answer_maxlen, len_dic, hidden_d
 
     # question encoder
     question_encoder = RecurrentSequential(unroll=unroll, stateful=stateful)
-    question_encoder.add(LSTMCell(hidden_dim, batch_input_shape=(batch_size, question_maxlen)))
+    question_encoder.add(LSTMCell(hidden_dim, batch_input_shape=(question_maxlen, len_dic)))
 
     for _ in range(1, depth[0]):
         question_encoder.add(Dropout(dropout))
@@ -61,7 +61,7 @@ def Seq2SeqtableQA(row_maxlen, question_maxlen, answer_maxlen, len_dic, hidden_d
     # answer decoder
     answer_decoder = RecurrentSequential(unroll=unroll, stateful=stateful,
                                   decode=True, output_length=answer_maxlen)
-    answer_decoder.add(Dropout(dropout, batch_input_shape=(batch_size, hidden_dim)))
+    answer_decoder.add(Dropout(dropout, input_shape=(batch_size, hidden_dim)))
 
     if depth[1] == 1:
         answer_decoder.add(LSTMCell(len_dic))
