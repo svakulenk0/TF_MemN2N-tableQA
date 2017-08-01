@@ -7,6 +7,7 @@ author: svakulenko
 import cPickle as pkl
 import numpy as np
 from random import randrange
+from operator import mul
 
 from keras.models import Sequential, Model, load_model
 from keras.layers.embeddings import Embedding
@@ -44,6 +45,7 @@ def encode_data(data, dic):
     rows = []
     questions = []
     answers = []
+    weights = []
 
     nqas = len(data[0][1])
     len_dic = len(dic)
@@ -71,10 +73,12 @@ def encode_data(data, dic):
         #     answer.append(char_vector)
         # answers.append(answer)
         answers.append([dic[c] for c in row[1][sample_qa][1]])
+        weights.append([1 for c in row[1][sample_qa][1]])
 
     return (pad_sequences(rows, padding='post'),
             pad_sequences(questions, padding='post'),
-            pad_sequences(answers, padding='post'))
+            pad_sequences(answers, padding='post'),
+            pad_sequences(weights, padding='post'))
 
 
 def one_hot_encode_data(data, dic, maxlenr=242, maxlenq=82, maxlena=5):
@@ -136,6 +140,29 @@ def one_hot_encode_data(data, dic, maxlenr=242, maxlenq=82, maxlena=5):
     return (rows, questions, answers)
 
 
+def categorical_accuracy(y_true, y_pred, mask=True):
+    '''
+    categorical_accuracy adjusted for padding mask
+    '''
+    # if mask is not None:
+    print y_true
+    print y_pred
+    eval_shape = (reduce(mul, y_true.shape[:-1]), y_true.shape[-1])
+    print eval_shape
+    y_true_ = np.reshape(y_true, eval_shape)
+    y_pred_ = np.reshape(y_pred, eval_shape)
+    flat_mask = np.flatten(mask)
+    comped = np.equal(np.argmax(y_true_, axis=-1),
+                      np.argmax(y_pred_, axis=-1))
+    ## not sure how to do this in tensor flow
+    good_entries = flat_mask.nonzero()[0]
+    return np.mean(np.gather(comped, good_entries))
+
+    # else:
+    #     return K.mean(K.equal(K.argmax(y_true, axis=-1),
+    #                           K.argmax(y_pred, axis=-1)))
+
+
 def make_character_embedding_layer(word_index):
     embeddings = get_embeddings()
     nb_words = min(MAX_NB_WORDS, len(word_index))
@@ -157,7 +184,7 @@ def train_model(training_data, dic):
     len_dic = len(dic) + 1
     print 'Vocabulary size:', len_dic
 
-    tables_train, questions_train, answers_train = training_data
+    tables_train, questions_train, answers_train, weights = training_data
     # tables_v, questions_v, answers_v = validation_data
 
     # show row sample
@@ -196,7 +223,7 @@ def train_model(training_data, dic):
                                 mask_zero=True,
                                 trainable=False))
     # Encode the input character sequence using an rnn, producing an output of HIDDEN_SIZE
-    # table_encoder.add(LSTM(EMBEDDINGS_SIZE, input_shape=(row_maxlen, len_dic)))
+    # table_encoder.add(LSTM(EMBEDDINGS_SIZE))
     # table_encoder.add(Dropout(0.3))
     table_encoded = table_encoder(table)
 
@@ -210,6 +237,7 @@ def train_model(training_data, dic):
                                    trainable=False))
     # Encode the input character sequence using an rnn, producing an output of HIDDEN_SIZE
     # question_encoder.add(LSTM(EMBEDDINGS_SIZE, input_shape=(question_maxlen, len_dic)))
+    # question_encoder.add(LSTM(EMBEDDINGS_SIZE))
     # question_encoder.add(Dropout(0.3))
     question_encoded = question_encoder(question)
 
@@ -220,13 +248,14 @@ def train_model(training_data, dic):
     # generate answer
     # answer = Sequential()
     # print match.shape
+    # answer = LSTM((HIDDEN_SIZE, answer_maxlen))(match)
     answer = LSTM(HIDDEN_SIZE)(match)
     # answer = Dropout(0.3)(answer)
     # Apply a dense layer to the every temporal slice of an input. For each of step
     # of the output sequence, decide which character should be chosen.
     answer = RepeatVector(answer_maxlen)(answer)
     # answer = LSTM(HIDDEN_SIZE, return_sequences=True)(answer)
-    answer = TimeDistributed(Dense(len_dic))(answer)
+    answer = TimeDistributed(Dense(output_dim=len_dic))(answer)
     # answer = Dense(answer_maxlen)(answer)
     answer = Activation('softmax')(answer)
     # answer = LSTM(answer_maxlen)(answer)
@@ -235,7 +264,9 @@ def train_model(training_data, dic):
     model = Model(inputs=[table, question], outputs=answer)
     model.compile(optimizer='adam',
                   loss='categorical_crossentropy',
-                  # sample_weight_mode='temporal',
+                  sample_weight_mode='temporal',
+                  # metrics=[categorical_accuracy])
+                  # loss_weights = weights,
                   metrics=['categorical_accuracy'])
 
     # define the checkpoint
@@ -248,7 +279,10 @@ def train_model(training_data, dic):
     # one hot encode true answers
     # print answers_train
     true_answers = one_hot_encode(answers_train, len_dic)
+    sample_weights = np.where(answers_train > 0, 1., 0.)
     # print true_answers
+    # print sample_weights
+
     # print answers_train
 
     # train
@@ -256,7 +290,8 @@ def train_model(training_data, dic):
               batch_size=32,
               epochs=2,
               shuffle=True,
-              # verbose=2,
+              verbose=2,
+              sample_weight=sample_weights,
               # callbacks=callbacks_list,
               validation_split=0.2)
               # validation_data=([tables_v, questions_v], answers_v))
@@ -281,14 +316,14 @@ def test_one_hot_encode_data(file=SAMPLE_CSV_FILE):
 def test_train_model(file=SAMPLE_CSV_FILE):
     data, dic = get_data(file)
     
-    rows, questions, answers = encode_data(data, dic)
+    rows, questions, answers, weigths = encode_data(data, dic)
     # rows, questions, answers = one_hot_encode_data(data, dic)
     print '#samples:', len(rows)
     # training_data = (rows[:split], questions[:split], answers[:split])
     # print '#samples for training:', len(training_data[0])
     # validation_data = (rows[split:], questions[split:], answers[split:])
     # print '#samples for validation:', len(validation_data[0])
-    model = train_model((rows, questions, answers), dic)
+    model = train_model((rows, questions, answers, weigths), dic)
 
     model.save(MODEL_PATH)
 
@@ -307,7 +342,7 @@ def check_model(path=MODEL_PATH, file=SAMPLE_CSV_FILE, nsamples=2):
 
     # load data
     data, dic = get_data(file)
-    rows, questions, true_answers = encode_data(data, dic)
+    rows, questions, true_answers, weights = encode_data(data, dic)
 
     # visualize model graph
     # plot_model(model, to_file='tableqa_model.png')
