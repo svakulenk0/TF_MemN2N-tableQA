@@ -4,81 +4,22 @@ author: svakulenko
 18 Jul 2017
 '''
 
-import cPickle as pkl
 import numpy as np
-from random import randrange
 from operator import mul
 
 from keras.models import Sequential, Model, load_model
 from keras.layers.embeddings import Embedding
 from keras.layers import Input, dot, LSTM, Dense, TimeDistributed, Activation, RepeatVector, Dropout
-from keras.preprocessing.sequence import pad_sequences
 from keras.utils import plot_model, to_categorical
 
 from question_generator import generate_questions
 from load_csv_into_rows import SAMPLE_CSV_FILE, DATA_DIR
+from load_data import get_data, encode_data
 
 
 HIDDEN_SIZE = 128
 EMBEDDINGS_SIZE = 64
 MODEL_PATH = './models/model.h5'
-
-
-def get_data(file_name):
-    # load training data 
-    loc = DATA_DIR + file_name[:-4] + '_data.pkl'
-    with open(loc, 'r') as f:
-        data = pkl.load(f)
-
-    # load dictionary
-    loc = DATA_DIR + file_name[:-4] + '_dict.pkl'
-    with open(loc, 'r') as f:
-        dic = pkl.load(f)
-    return data, dic
-
-
-def encode_data(data, dic):
-    '''
-    encodes data into a 2D array
-    as a sequence of characters using a dictionary
-    '''
-    rows = []
-    questions = []
-    answers = []
-    weights = []
-
-    nqas = len(data[0][1])
-    len_dic = len(dic)
-
-    for row in data:
-        # encode row
-        rows.append([dic[c] for c in row[0]])
-
-        # pick a sample qa 
-        sample_qa = randrange(0, nqas)
-
-        # encode sample qa
-        question = row[1][sample_qa][0].strip('?')
-        # print question
-        questions.append([dic[c] for c in question])
-        # answers.append([dic[c] for c in row[1][sample_qa][1]])
-        
-        # one hot encode answers
-        # for each char is answer
-        # answer = []
-        # for c in row[1][sample_qa][1]:
-        #     # init with 0s
-        #     char_vector = np.zeros((len_dic), dtype='int32')
-        #     char_vector[dic[c]] = 1
-        #     answer.append(char_vector)
-        # answers.append(answer)
-        answers.append([dic[c] for c in row[1][sample_qa][1]])
-        weights.append([1 for c in row[1][sample_qa][1]])
-
-    return (pad_sequences(rows, padding='post'),
-            pad_sequences(questions, padding='post'),
-            pad_sequences(answers, padding='post'),
-            pad_sequences(weights, padding='post'))
 
 
 def one_hot_encode_data(data, dic, maxlenr=242, maxlenq=82, maxlena=5):
@@ -184,7 +125,7 @@ def train_model(training_data, dic):
     len_dic = len(dic) + 1
     print 'Vocabulary size:', len_dic
 
-    tables_train, questions_train, answers_train, weights = training_data
+    tables_train, questions_train, answers_train = training_data
     # tables_v, questions_v, answers_v = validation_data
 
     # show row sample
@@ -302,12 +243,6 @@ def one_hot_encode(array, len_dic):
     return np.array([to_categorical(vector, num_classes=len_dic) for vector in array])
 
 
-def test_encode_data(file=SAMPLE_CSV_FILE):
-    data, dic = get_data(file)
-    rows, questions, answers = encode_data(data[:2], dic)
-    print rows
-
-
 def test_one_hot_encode_data(file=SAMPLE_CSV_FILE):
     data, dic = get_data(file)
     print one_hot_encode_data(data, dic)
@@ -315,15 +250,14 @@ def test_one_hot_encode_data(file=SAMPLE_CSV_FILE):
 
 def test_train_model(file=SAMPLE_CSV_FILE):
     data, dic = get_data(file)
-    
-    rows, questions, answers, weigths = encode_data(data, dic)
+    rows, questions, answers = encode_data(data, dic)
     # rows, questions, answers = one_hot_encode_data(data, dic)
     print '#samples:', len(rows)
     # training_data = (rows[:split], questions[:split], answers[:split])
     # print '#samples for training:', len(training_data[0])
     # validation_data = (rows[split:], questions[split:], answers[split:])
     # print '#samples for validation:', len(validation_data[0])
-    model = train_model((rows, questions, answers, weigths), dic)
+    model = train_model((rows, questions, answers), dic)
 
     model.save(MODEL_PATH)
 
@@ -342,7 +276,7 @@ def check_model(path=MODEL_PATH, file=SAMPLE_CSV_FILE, nsamples=2):
 
     # load data
     data, dic = get_data(file)
-    rows, questions, true_answers, weights = encode_data(data, dic)
+    rows, questions, true_answers = encode_data(data, dic)
 
     # visualize model graph
     # plot_model(model, to_file='tableqa_model.png')
