@@ -38,14 +38,15 @@ def get_data(file_name):
 
 def encode_data(data, dic):
     '''
-    encodes data as a sequence of characters using a dictionary
-    for the input layer
+    encodes data into a 2D array
+    as a sequence of characters using a dictionary
     '''
     rows = []
     questions = []
     answers = []
 
     nqas = len(data[0][1])
+    len_dic = len(dic)
 
     for row in data:
         # encode row
@@ -58,6 +59,17 @@ def encode_data(data, dic):
         question = row[1][sample_qa][0].strip('?')
         # print question
         questions.append([dic[c] for c in question])
+        # answers.append([dic[c] for c in row[1][sample_qa][1]])
+        
+        # one hot encode answers
+        # for each char is answer
+        # answer = []
+        # for c in row[1][sample_qa][1]:
+        #     # init with 0s
+        #     char_vector = np.zeros((len_dic), dtype='int32')
+        #     char_vector[dic[c]] = 1
+        #     answer.append(char_vector)
+        # answers.append(answer)
         answers.append([dic[c] for c in row[1][sample_qa][1]])
 
     return (pad_sequences(rows, padding='post'),
@@ -65,7 +77,86 @@ def encode_data(data, dic):
             pad_sequences(answers, padding='post'))
 
 
-def train_model(training_data, len_dic):
+def one_hot_encode_data(data, dic, maxlenr=242, maxlenq=82, maxlena=5):
+    '''
+    encodes data into a 3D tensor
+    each sample as a sequence of characters using a dictionary
+    each charachter is one-hot-encoded according to its index in the dictionary
+    
+    data list of tuples (row, [(q, a)]) list of qa tuples per row 
+    e.g. ('what was internal_mig_emigration in st. willibald in 2014?', '41')
+
+    dic OrderedDict character-level e.g. [(';', 1), ('1', 2) ...]
+    '''
+
+    len_dic = len(dic) + 1
+    print 'Vocabulary size:', len_dic
+
+    nsamples = len(data)
+    print "# Rows:", nsamples
+    
+    nqas = len(data[0][1])
+    print "# QA tuples per row:", nqas
+
+
+
+    # row_maxlen = data[0][0].shape[1]
+    # question_maxlen = questions_train.shape[1]
+    # answer_maxlen = answers_train.shape[1]
+    # print 'Max length of a row:', row_maxlen
+    # print 'Max length of a question:', question_maxlen
+    # print 'Max length of an answer:', answer_maxlen
+
+    print('Vectorization...')
+
+    rows = np.zeros((nsamples, maxlenr, len_dic), dtype='int32')
+    questions = np.zeros((nsamples, maxlenq, len_dic), dtype='int32')
+    answers = np.zeros((nsamples, maxlena, len_dic), dtype='int32')
+
+
+    for i, row in enumerate(data):
+        
+        # encode row
+        for t, char in enumerate(row[0]):
+            rows[i, t, dic[char]] = 1
+
+        # pick a sample qa 
+        sample_qa = randrange(0, nqas)
+
+        # encode sample qa
+        question = row[1][sample_qa][0].strip('?')
+        # print question
+        for t, char in enumerate(question):
+            questions[i, t, dic[char]] = 1
+        
+        answer = row[1][sample_qa][1]
+        for t, char in enumerate(answer):
+            answers[i, t, dic[char]] = 1
+
+    return (rows, questions, answers)
+
+
+def make_character_embedding_layer(word_index):
+    embeddings = get_embeddings()
+    nb_words = min(MAX_NB_WORDS, len(word_index))
+    embedding_matrix = np.zeros((nb_words, EMBEDDING_DIM))
+
+    for word, i in word_index.items():
+        if i >= MAX_NB_WORDS:
+            continue
+        embedding_vector = embeddings.get(word)
+        if embedding_vector is not None:
+            embedding_matrix[i] = embedding_vector
+
+    embedding_layer = Embedding(nb_words, EMBEDDING_DIM, weights=[embedding_matrix], input_length=MAX_SEQUENCE_LENGTH, trainable=False)
+    return embedding_layer
+
+
+def train_model(training_data, dic):
+
+    len_dic = len(dic) + 1
+    print 'Vocabulary size:', len_dic
+
     tables_train, questions_train, answers_train = training_data
     # tables_v, questions_v, answers_v = validation_data
 
@@ -75,7 +166,7 @@ def train_model(training_data, len_dic):
     # show training data stats (in chars)
     row_maxlen = tables_train.shape[1]
     question_maxlen = questions_train.shape[1]
-    answer_maxlen = answers_train.shape[1]
+    answer_maxlen = len(answers_train[0])
     print 'Max length of a row:', row_maxlen
     print 'Max length of a question:', question_maxlen
     print 'Max length of an answer:', answer_maxlen
@@ -84,6 +175,15 @@ def train_model(training_data, len_dic):
     table = Input((row_maxlen,), dtype='int32')
     question = Input((question_maxlen,), dtype='int32')
 
+    # dictionary map embeddings matrix
+
+    # embed_chars()
+
+    # embedding_matrix = np.zeros((len_dic, len_dic))
+
+    # for char, i in dic.items():
+    #     embedding_matrix[i] = 1
+
 
     # network architecture
 
@@ -91,20 +191,26 @@ def train_model(training_data, len_dic):
     table_encoder = Sequential()
     table_encoder.add(Embedding(input_dim=len_dic,
                                 output_dim=EMBEDDINGS_SIZE,
-                                input_length=row_maxlen))
+                                input_length=row_maxlen,
+                                # weights = [embedding_matrix],
+                                mask_zero=True,
+                                trainable=False))
     # Encode the input character sequence using an rnn, producing an output of HIDDEN_SIZE
     # table_encoder.add(LSTM(EMBEDDINGS_SIZE, input_shape=(row_maxlen, len_dic)))
-    table_encoder.add(Dropout(0.3))
+    # table_encoder.add(Dropout(0.3))
     table_encoded = table_encoder(table)
 
     # read question
     question_encoder = Sequential()
     question_encoder.add(Embedding(input_dim=len_dic,
                                    output_dim=EMBEDDINGS_SIZE,
-                                   input_length=question_maxlen))
+                                   input_length=question_maxlen,
+                                   # weights = [embedding_matrix],
+                                   mask_zero=True,
+                                   trainable=False))
     # Encode the input character sequence using an rnn, producing an output of HIDDEN_SIZE
     # question_encoder.add(LSTM(EMBEDDINGS_SIZE, input_shape=(question_maxlen, len_dic)))
-    question_encoder.add(Dropout(0.3))
+    # question_encoder.add(Dropout(0.3))
     question_encoded = question_encoder(question)
 
     # match table and question
@@ -113,8 +219,9 @@ def train_model(training_data, len_dic):
 
     # generate answer
     # answer = Sequential()
+    # print match.shape
     answer = LSTM(HIDDEN_SIZE)(match)
-    answer = Dropout(0.3)(answer)
+    # answer = Dropout(0.3)(answer)
     # Apply a dense layer to the every temporal slice of an input. For each of step
     # of the output sequence, decide which character should be chosen.
     answer = RepeatVector(answer_maxlen)(answer)
@@ -128,7 +235,8 @@ def train_model(training_data, len_dic):
     model = Model(inputs=[table, question], outputs=answer)
     model.compile(optimizer='adam',
                   loss='categorical_crossentropy',
-                  metrics=['accuracy'])
+                  # sample_weight_mode='temporal',
+                  metrics=['categorical_accuracy'])
 
     # define the checkpoint
     # filepath="./models/tmp/weights-improvement-{epoch:02d}-{loss:.4f}.hdf5"
@@ -138,18 +246,25 @@ def train_model(training_data, len_dic):
     model.summary()
 
     # one hot encode true answers
-    true_answers = np.array([to_categorical(answer, num_classes=len_dic) for answer in answers_train])
+    # print answers_train
+    true_answers = one_hot_encode(answers_train, len_dic)
+    # print true_answers
+    # print answers_train
 
     # train
     model.fit([tables_train, questions_train], true_answers,
               batch_size=32,
-              epochs=10,
+              epochs=2,
               shuffle=True,
+              # verbose=2,
               # callbacks=callbacks_list,
               validation_split=0.2)
               # validation_data=([tables_v, questions_v], answers_v))
-
     return model
+
+
+def one_hot_encode(array, len_dic):
+    return np.array([to_categorical(vector, num_classes=len_dic) for vector in array])
 
 
 def test_encode_data(file=SAMPLE_CSV_FILE):
@@ -158,24 +273,28 @@ def test_encode_data(file=SAMPLE_CSV_FILE):
     print rows
 
 
-def test_train_model(file=SAMPLE_CSV_FILE, split=6000):
+def test_one_hot_encode_data(file=SAMPLE_CSV_FILE):
     data, dic = get_data(file)
-    len_dic = len(dic) + 1
-    print 'Vocabulary size:', len_dic
+    print one_hot_encode_data(data, dic)
+
+
+def test_train_model(file=SAMPLE_CSV_FILE):
+    data, dic = get_data(file)
+    
     rows, questions, answers = encode_data(data, dic)
+    # rows, questions, answers = one_hot_encode_data(data, dic)
     print '#samples:', len(rows)
     # training_data = (rows[:split], questions[:split], answers[:split])
     # print '#samples for training:', len(training_data[0])
     # validation_data = (rows[split:], questions[split:], answers[split:])
     # print '#samples for validation:', len(validation_data[0])
-    model = train_model((rows, questions, answers), len_dic)
+    model = train_model((rows, questions, answers), dic)
 
     model.save(MODEL_PATH)
 
     # evaluate the model
     # scores = model.evaluate(X, Y, verbose=0)
     # print("%s: %.2f%%" % (model.metrics_names[1], scores[1]*100))
-    
 
 
 def check_model(path=MODEL_PATH, file=SAMPLE_CSV_FILE, nsamples=2):
@@ -195,7 +314,7 @@ def check_model(path=MODEL_PATH, file=SAMPLE_CSV_FILE, nsamples=2):
 
     # predict answers
     prediction = model.predict([rows[:nsamples], questions[:nsamples]])
-    # print prediction
+    print prediction
     predicted_answers = [[np.argmax(character) for character in sample] for sample in prediction]
     print predicted_answers
     print true_answers[:nsamples]
@@ -215,5 +334,6 @@ def check_model(path=MODEL_PATH, file=SAMPLE_CSV_FILE, nsamples=2):
 
 
 if __name__ == '__main__':
-    # test_train_model()
+    # test_one_hot_encode_data()
+    test_train_model()
     check_model()
