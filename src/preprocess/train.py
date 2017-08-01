@@ -22,65 +22,6 @@ EMBEDDINGS_SIZE = 64
 MODEL_PATH = './models/model.h5'
 
 
-def one_hot_encode_data(data, dic, maxlenr=242, maxlenq=82, maxlena=5):
-    '''
-    encodes data into a 3D tensor
-    each sample as a sequence of characters using a dictionary
-    each charachter is one-hot-encoded according to its index in the dictionary
-    
-    data list of tuples (row, [(q, a)]) list of qa tuples per row 
-    e.g. ('what was internal_mig_emigration in st. willibald in 2014?', '41')
-
-    dic OrderedDict character-level e.g. [(';', 1), ('1', 2) ...]
-    '''
-
-    len_dic = len(dic) + 1
-    print 'Vocabulary size:', len_dic
-
-    nsamples = len(data)
-    print "# Rows:", nsamples
-    
-    nqas = len(data[0][1])
-    print "# QA tuples per row:", nqas
-
-
-
-    # row_maxlen = data[0][0].shape[1]
-    # question_maxlen = questions_train.shape[1]
-    # answer_maxlen = answers_train.shape[1]
-    # print 'Max length of a row:', row_maxlen
-    # print 'Max length of a question:', question_maxlen
-    # print 'Max length of an answer:', answer_maxlen
-
-    print('Vectorization...')
-
-    rows = np.zeros((nsamples, maxlenr, len_dic), dtype='int32')
-    questions = np.zeros((nsamples, maxlenq, len_dic), dtype='int32')
-    answers = np.zeros((nsamples, maxlena, len_dic), dtype='int32')
-
-
-    for i, row in enumerate(data):
-        
-        # encode row
-        for t, char in enumerate(row[0]):
-            rows[i, t, dic[char]] = 1
-
-        # pick a sample qa 
-        sample_qa = randrange(0, nqas)
-
-        # encode sample qa
-        question = row[1][sample_qa][0].strip('?')
-        # print question
-        for t, char in enumerate(question):
-            questions[i, t, dic[char]] = 1
-        
-        answer = row[1][sample_qa][1]
-        for t, char in enumerate(answer):
-            answers[i, t, dic[char]] = 1
-
-    return (rows, questions, answers)
-
-
 def categorical_accuracy(y_true, y_pred, mask=True):
     '''
     categorical_accuracy adjusted for padding mask
@@ -241,11 +182,6 @@ def train_model(training_data, dic):
 
 def one_hot_encode(array, len_dic):
     return np.array([to_categorical(vector, num_classes=len_dic) for vector in array])
-
-
-def test_one_hot_encode_data(file=SAMPLE_CSV_FILE):
-    data, dic = get_data(file)
-    print one_hot_encode_data(data, dic)
 
 
 def test_train_model(file=SAMPLE_CSV_FILE):
